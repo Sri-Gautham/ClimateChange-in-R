@@ -1,0 +1,261 @@
+---
+title: "Climate Change Analysis"
+author: "Sri Gautham Subramani"
+output: 
+  revealjs::revealjs_presentation:
+    theme: league
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(viridis)
+library(shiny)
+library(leaflet)
+library(revealjs)
+library(ggmap)
+library(htmltools)
+library(date)
+library(lubridate)
+library(htmlwidgets)
+library(tidyverse)
+library(choroplethr)
+library(choroplethrMaps)
+library(repmis)
+library(ggthemes)
+library(sp)
+library(jpeg)
+library(openintro)
+library(rgdal)
+library(raster)
+library(mapview)
+library(ggplot2)
+library(readr)
+library(data.table)
+library(dplyr)
+library(tidyverse)
+library(data.table)
+library(ggplot2)
+library(lubridate)
+library(viridis)
+library(animation)
+library(maps)
+```
+
+##Objective
+
+>- The Objective of this topic is to discuss the changes in climate.
+>- To study the variations in the temperatures along a period of time.
+>- To render the results visually with the help of R.
+
+## Data Sources
+
+>- [Berkeley Earth Data](http://berkeleyearth.org/data/) : Source for the Time Series data of Climate change from 1750-2013.
+
+##Setting up the Data
+
+>- For this particular data, there was not much cleaning to do as the source website automatically takes care of that
+>- In addition, manipulation of data was necessary to pull the annual reports and to view the seasonal trends corresponding to every year.
+
+##Initial Analysis
+
+
+
+```{r loadData, echo=FALSE, warning=FALSE, message=FALSE}
+globe <- fread("https://raw.githubusercontent.com/DataWrangling957/HomeworkData/master/Final%20Project/GlobalTemperatures.csv")
+global_data_state <- source_data("https://github.com/DataWrangling957/HomeworkData/blob/master/Final%20Project/GlobalLandTemperaturesByState.csv?raw=True")
+gCountryTemps = source_data("https://github.com/DataWrangling957/HomeworkData/blob/master/Final%20Project/GlobalLandTemperaturesByCountry.csv?raw=True")
+```
+
+```{r echo=TRUE, include=TRUE, warning=FALSE, message=FALSE}
+globe$dt <- as.Date(globe$dt, format = "%Y-%m-%d")
+globe$year <- as.numeric(format(globe$dt, "%Y"))
+globe$month <- as.numeric(format(globe$dt,"%m"))
+globe$month_text <- month.abb[globe$month]
+globe[,c(10,11,12)]
+```
+
+## Change is Global Temperature
+
+```{r, warning=FALSE}
+globe_1 <- na.omit(globe[year>=1850])
+
+ggplot(globe_1,aes(x=dt,y=LandAverageTemperature, colour=reorder(month_text,-LandAverageTemperature,mean)))+
+  geom_point()+ geom_smooth()+
+  ggtitle("Average Land Temperature over years\n(1850-2013)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("Year")+ylab("Average Temperature")
+```
+
+## Examining United States
+
+```{r, warning=FALSE}
+us_data <- global_data_state %>% filter(Country=="United States")  %>%
+  separate(col = dt, into = c("Year", "Month", "Day"), convert = TRUE)
+us_data <- na.omit(us_data)
+
+us_data <- us_data %>% 
+  filter(Year>1850) %>%
+  group_by(Year) %>% 
+  summarise(Temp = mean(AverageTemperature))
+head(us_data)
+```
+
+## Year Wise plot of Temperature in USA
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(data = us_data, mapping = aes(x=Year,y=Temp,col= Temp))+
+  geom_point()+
+  geom_smooth()+
+  scale_color_continuous(low="blue", high="red")+
+  scale_x_discrete(breaks = seq(1849,2012,20))+
+  theme(panel.background = element_blank())+
+  labs(title = "Year Wise Average Temperature in USA")
+```
+
+## Glimpse of 1850 and 2013
+
+```{r, echo=FALSE, warning=FALSE}
+us_state_data <- global_data_state %>% filter(Country=="United States")  %>%
+  separate(col = dt, into = c("Year", "Month", "Day"), convert = TRUE)
+us_state_data$State <- as.character(us_state_data$State)
+us_state_data$State[us_state_data$State=="Georgia (State)"] <- "Georgia"
+us_state_data$State<- as.factor(us_state_data$State)
+```
+
+```{r, echo=TRUE, warning=FALSE, eval=TRUE}
+data_general <- us_state_data[,c(1,4,6)]
+data_general <- data_general %>%
+  group_by(Year,State) %>%
+  summarise(value=mean(AverageTemperature))
+colnames(data_general)[2]<- "region"
+data_general$region<-tolower(data_general$region)
+data_2013 <- data_general %>%
+  filter(Year==2013)
+data_2013<-data_2013[,2:3]
+
+data_1850 <- data_general %>%
+  filter(Year==1850)
+data_1850<-data_1850[,2:3]
+```
+
+## Choroplethr of the Temperature in 1850
+
+```{r, echo=TRUE, warning=FALSE}
+print(state_choropleth(data_1850,
+                       title="Land Temperature 1850", 
+                       num_colors = 8,
+                       legend="Degrees"),reference_map=TRUE)
+```
+
+## Choroplethr of the Temperature in 2013
+
+```{r, echo=TRUE, warning=FALSE}
+print(state_choropleth(data_2013,
+                       title="Land Temperature 2013", 
+                       num_colors = 8,
+                       legend="Degrees"),reference_map=TRUE)
+```
+
+##Overall Cange in Temperature over Years
+```{r echo=TRUE, warning=FALSE, message=FALSE}
+globe_2 <- globe_1[, lapply(.SD, mean),by=year, .SDcols= c("LandAverageTemperature","LandMaxTemperature","LandMinTemperature","LandAndOceanAverageTemperature","LandAndOceanAverageTemperatureUncertainty","LandAverageTemperatureUncertainty","LandMaxTemperatureUncertainty","LandMinTemperatureUncertainty")]
+head(globe_2)
+```
+
+##Plot of Overall Change
+
+```{r, echo=FALSE, warning=FALSE}
+ggplot(data = globe_2,aes(x=year,y=LandAndOceanAverageTemperature))+
+  geom_line(aes(color="LandAndOceanAverageTemperature"))+
+  geom_line(aes(y=LandAndOceanAverageTemperatureUncertainty, color="LandAndOceanAverageTemperatureUncertainty")) + 
+  geom_line(aes(y=LandAverageTemperature, color="LandAverageTemperature")) + 
+  geom_line(aes(y=LandAverageTemperatureUncertainty, color="LandAverageTemperatureUncertainty")) + 
+  ggtitle("Land and Ocean Temperature over years (1850-2013)")+
+  theme(plot.title = element_text(hjust = 0.5))+
+  xlab("Year")+ylab("Temperature Variations")+labs(color='')+
+  theme_bw() +
+  theme(panel.grid.major.x = element_blank(), 
+        panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank(),
+        panel.grid.minor.y = element_blank())
+```
+
+##High Level View of Climate Change
+
+```{r, echo=FALSE, warning=FALSE, eval=FALSE}
+gCountryTemps <- gCountryTemps %>%
+  mutate(AverageTemperature = as.numeric(AverageTemperature),
+         yearDt = year(dt),
+         monthDt = month(dt),
+         decadeDt = round(year(dt),-1)) %>%
+  mutate(Country = if_else(Country=='United States','USA',Country),
+         Country = if_else(Country=='United Kingdom' | Country=='United Kingdom (Europe)','UK',Country),
+         Country = if_else(Country=='Congo (Democratic Republic Of The)','Democratic Republic of the Congo',Country),
+         Country = if_else(Country=='Congo','Republic of Congo',Country),
+         Country = if_else(Country=='Burma','Myanmar',Country),
+         Country = if_else(Country=='Côte D_Ivoire','Ivory Coast',Country),
+         Country = if_else(Country=='Guinea Bissau','Guinea-Bissau',Country),
+         Country = if_else(Country=='Bosnia And Herzegovina','Bosnia and Herzegovina',Country)
+  )
+
+gCountryTemps = gCountryTemps %>%
+  bind_rows(gCountryTemps %>% filter(Country=='Sudan') %>% mutate(Country='South Sudan'))
+
+gCountryTemps = gCountryTemps %>%
+  filter(yearDt >= 1850) %>%
+  group_by(Country) %>%
+  mutate(meanTemp = mean(AverageTemperature,na.rm=TRUE)) %>%
+  ungroup()
+
+gCountryTempsAnnual = gCountryTemps %>%
+  group_by(Country,yearDt) %>%
+  summarise(meanTemp = mean(meanTemp,na.rm=TRUE), #identity operation
+            AverageTemperature = mean(AverageTemperature,na.rm=TRUE)) %>%
+  mutate(tempAboveBelowAverage = AverageTemperature - meanTemp)
+wMap = as.tibble(map_data('world')) %>%
+  mutate(Country = region)
+allTimeLow = min(gCountryTempsAnnual$tempAboveBelowAverage,na.rm=TRUE)
+allTimeHigh = max(gCountryTempsAnnual$tempAboveBelowAverage,na.rm=TRUE)
+
+saveGIF({
+  
+  ggp = ggplot()
+  
+  for (y in 1850:2012){
+    #message('year ',y)
+    
+    gCountryTempsMap = wMap %>%
+      left_join(gCountryTempsAnnual %>% 
+                  filter(yearDt == y), by='Country')
+    
+    localLow = min(gCountryTempsMap$tempAboveBelowAverage,na.rm=TRUE)
+    localHigh = max(gCountryTempsMap$tempAboveBelowAverage,na.rm=TRUE)
+    colourScaleStart = (localLow - allTimeLow) / (allTimeHigh - allTimeLow)
+    colourScaleEnd = 1 - (allTimeHigh - localHigh) / (allTimeHigh - allTimeLow)
+    
+    
+    ggp = ggplot() + 
+      geom_polygon(data = gCountryTempsMap, aes(x=long, y = lat, group = group, fill=tempAboveBelowAverage)) +
+      scale_fill_viridis(option='inferno',begin=colourScaleStart,end=colourScaleEnd) +
+      #          scale_fill_viridis(option='inferno') +
+      coord_fixed(1.3) + #http://eriqande.github.io/rep-res-web/lectures/making-maps-with-R.html
+      ggtitle(paste0('Temperature above/below average by country and year. Year = ',y)) +
+      theme(panel.background = element_rect(fill='lightsteelblue1')) +
+      theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+      theme(legend.position="none")
+    print(ggp)
+  }
+  
+  #pause on last map
+  for (i in 1:20){
+    print(ggp)
+  }
+  
+  
+},movie.name='mappingTemps.gif', interval = 0.2, convert = "convert", ani.width = 1000, 
+ani.height = 600)
+
+#message('done')
+```
+
+![Global Temperatures](https://raw.githubusercontent.com/DataWrangling957/HomeworkData/master/Final%20Project/mappingTemps.gif)
